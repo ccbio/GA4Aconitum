@@ -1,0 +1,57 @@
+
+### phylogenomic analysis and divergence time estimation
+
+## run orthofinder
+
+orthofinder -f /home/cun_test/data/renhuanxing_home/Tree_2_22/findoth/12pepfile -t 48
+
+
+
+## mafft aligmnet 
+
+path=/home/cun_test/data/renhuanxing_home/Tree_2_22/findoth/12pepfile/OrthoFinder/Results_Feb22/Single_Copy_Orthologue_Sequences/
+path1=/home/cun_test/data/renhuanxing_home/Tree_2_22/treeraxml/Singlegene_MSA/
+
+for sample in `ls ${path}`
+   do
+   nam=${sample: 0: 9}
+   
+   mafft --localpair  --maxiterate 16 --reorder ${path}${sample} > ${path1}${nam}_aln.fa
+
+done
+
+
+
+## trimal trimming
+
+path=/home/cun_test/data/renhuanxing_home/Tree_2_22/treeraxml/Singlegene_MSA/
+path1=/home/cun_test/data/renhuanxing_home/Tree_2_22/treeraxml/trimed/
+
+for sample in `ls ${path}`
+   do
+   nam=${sample: 0: 9}
+   
+   trimal -in ${path}${sample} -out ${path1}${nam}_aln_trimed.fa -gt 1 
+
+done
+
+
+
+##  Raxml for constructing phylogenetic tree 
+### T1: bootstrap = 1000
+
+cd /home/cun_test/data/renhuanxing_home/Tree_2_22/treeraxml/raxml/treeresultT1
+
+raxmlHPC-PTHREADS-AVX2 -s ${path}allfasta.phy -n T1 -m PROTGAMMAJTT -# 1000 -x 12345 -p 12345 -f a -T 48
+
+
+
+## mcmctree estimate divergence time
+
+cd /data_group/cunyupeng/renhuanxing_home/Tree_2_22/MCMCtree/data/
+mcmctree mcmctree.ctl  && echo "DONE!"
+
+# mcmctree usedata=2 in.BV
+
+cd /data_group/cunyupeng/renhuanxing_home/Tree_2_22/MCMCtree/run2
+mcmctree mcmctree.ctl  && echo "DONE!"
