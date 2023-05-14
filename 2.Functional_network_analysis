@@ -21,20 +21,14 @@ rundeseq  <- function(arg1, arg2) {
 }
 
 ## ------ deine two-two comparison function ------
-#arg1:control ; arg2: treat。 意义：处理比控制有多少基因是有差异的
+#arg1:control ; arg2: treat。 
 rundeseq  <- function(arg1, arg2) {
   
-  # 差异分析
+  # DEG analysis
   res <- results(DE_dds, contrast=c("condition", arg2, arg1))
   # filtering
   diff_gene <<- as.data.frame(subset(res, padj < 0.05 & abs(log2FoldChange) >= 1))
-  
-  #绘制火山图
-  #df = na.omit(as.data.frame(res))
-  #df$group = ifelse(df$log2FoldChange>=2&df$padj<=0.05,"Up",
-  #                  ifelse(df$log2FoldChange<=-2&df$padj<=0.05,"Down","Notsig"))
-  #volcano_plot(df = df, name1=arg1, name2=arg2)
-  
+
 }
 
 
@@ -58,7 +52,7 @@ volcano_plot <- function(df,name1, name2){
 ## ---------- DEG |logFC| >1 ---------
 
 library(DESeq2)
-#构建dds矩阵
+# dds object
 condition <- as.factor(rep(c("all_Y", "all_J", "all_Z", "all_C"),6))
 colData <- data.frame(row.names = colnames(filter_count), condition)
 dds <- DESeqDataSetFromMatrix(countData = filter_count, colData = colData, 
@@ -347,20 +341,16 @@ run_WGCNA <- function(all_exprvst, type) {
    ## 1. input data
   dim(all_exprvst)
   print(dim(all_exprvst))
-  
-  ## 数据筛选 （这里使用差异表达的通路基因，就不过滤低表达基因）
-  #筛选中位绝对偏差前75%的基因，至少MAD大于0.01，也可不做筛选，使MAD大于0即可
+
   #m.mad <- apply(all_exprvst,1,mad)
   #allExprVar <- all_exprvst[which(m.mad > max(quantile(m.mad, probs=seq(0, 1, 0.25))[2],0.01)),]
   #allExprVar <- all_exprvst
   
-  #差异基因
+  #DEGs
   allExprDEG <- all_exprvst
-  
-  ## 转换为样品在行，基因在列的矩阵
+   
   allExpr <- as.data.frame(t(allExprDEG))
   
-  ## 检测缺失值
   gsg = goodSamplesGenes(allExpr, verbose = 3)
   
   if (!gsg$allOK){
@@ -382,28 +372,27 @@ run_WGCNA <- function(all_exprvst, type) {
   print(dim(allExpr))
   
   
-  ## 2.1 样品聚类,使用dist函数,并通过聚类查看是否存在异常样品
+  ## 2.1 sample2sample clustering
   sampleTree = hclust(dist(allExpr), method = "average")
   
-  
-  #将得到的聚类结果画图
+  #  
   #plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="")
   
-  #我们需要将异常样品进行去除
+  # remove outler
   #abline(h = 160, col = "red")
   #clust = cutreeStatic(sampleTree, cutHeight = 155, minSize = 10) table(clust) keepSamples = (clust==1) datExpr0 = datExpr0[keepSamples, ]
   
   
-  ## 2.2 选择合适的软阈值（soft thresholding power）即beta值
+  ## soft thresholding power (beta)
   powers = c(c(1:10), seq(from = 12, to=30, by=2))
   sft = pickSoftThreshold(allExpr, powerVector=powers, networkType = "unsigned", verbose=5)
   
   
-  #选取最佳的power值，建立邻近矩阵，根据连接度使我们的基因分布符合无尺度网络
+  #
   power = sft$powerEstimate
   print(paste("power: ",power))
   
-  ## 即让程序推荐一个适合的power
+  ## choose best beta for thresholding power 
   if (is.na(power)){
     power = ifelse(nSamples<20, ifelse(type == "unsigned", 9, 18),
                    ifelse(nSamples<30, ifelse(type == "unsigned", 8, 16),
@@ -416,7 +405,7 @@ run_WGCNA <- function(all_exprvst, type) {
   print(paste("new_power: ",power))
   
   
-  ## 构建共表达网络：net对象中保存了所有相关性网络和module的结果
+  ## co-expression network
   net = blockwiseModules(allExpr, power = power, maxBlockSize = nGenes,
                          TOMType = type, minModuleSize = 30,
                          reassignThreshold = 0, mergeCutHeight = 0.25,
@@ -425,28 +414,25 @@ run_WGCNA <- function(all_exprvst, type) {
                          saveTOMFileBase = "WUTOU-all.tom",
                          verbose = 3)
   
-  ## 灰色的为**未分类**到模块的基因。
-  
+  ##   
   # Convert labels to colors for plotting
   moduleLabels = net$colors
   moduleColors = labels2colors(moduleLabels)
   
   print(" net END！")
   
-  ## 4. 可视化基因网络 (TOM plot) 
+  ## 4. TOM plot 
   
   TOM = TOMsimilarityFromExpr(allExpr, power=power, corType="pearson", 
                               networkType="unsigned") 
   ## Loading objects:
   TOM <- as.matrix(TOM)
-  
 
-  ## 5. 导出网络用于Cytoscape
   probes = colnames(allExpr)
   dimnames(TOM) <- list(probes, probes)
   
   # Export the network into edge and node list files Cytoscape can read
-  # threshold 默认为0.5, 可以根据自己的需要调整,也可以后续在cytscape中调整
+  # threshold 
   cyt = exportNetworkToCytoscape(TOM,
                                  edgeFile = paste("wutou-pathway", ".edges.txt", sep=""),
                                  nodeFile = paste("wutou-pathway", ".nodes.txt", sep=""),
@@ -454,32 +440,22 @@ run_WGCNA <- function(all_exprvst, type) {
                                  nodeNames = probes, nodeAttr = moduleColors)
   
   save(cyt, file = "outNetworkToCytfile.rda")
-  
-  ## 6. end
-  print(" WGCNA END! ")
+
   
 }
 
 ## 
-setwd("E:/黄草乌项目/2.5 通路基因共表达网络+最小生成树/")
+## MST anlysis of the co-expression network
 
 pathway_expvst <- filter_exprvst[pathwaygenefc1$geneid2,]
 run_WGCNA(all_exprvst = pathway_expvst, type = "unsigned")
 
-#[1] " 检查数据... "
-#[1] 24 315
-
-
-## 导入315个基因（|FC|>1）构建的共表达网络
-
-setwd("E:/黄草乌项目/2.5 通路基因共表达网络+最小生成树")
+## load the co-expression netwrok
 network <- read.csv("wutou-pathway.edges.txt", sep="\t", header=T)
 
 
 
-## 筛选共表达网络
-
-# 1.去除低权重边
+## filter the raw co-expression network
 filter_net0.15 <- network[which(network$weight > 0.15),] 
 
 filterlist <- unique(c(filter_net0.15$fromNode, filter_net0.15$toNode)) 
@@ -491,7 +467,7 @@ table(type0.15$type) # 280个gene
 
 
 
-# 2. 保留每个基因前20%条+weight
+# 2. keep top 20% weight nodes of each genes
 
 denetorder <- filter_net0.15[order(filter_net0.15$fromNode,
                                   filter_net0.15$weight, decreasing = T),] 
@@ -512,7 +488,7 @@ for (var in unique(denetorder$fromNode)) {
 
 ## Visualization co-expression network 
 
-## 过滤零散节点
+## filter solar nodes
 
 filter_g = graph_from_data_frame(d=filter_edge[, c(1,2)], directed=F)                          
 
@@ -531,7 +507,7 @@ V <- as.data.frame(cbind(V(filter_g1), V(filter_g1)$color))
 V$geneid2 <- rownames(V)
 Vtype <- dplyr::left_join(V, pathwaygenefc1, by="geneid2") 
 
-table(Vtype$type) #231个基因
+table(Vtype$type) #231 genes
 #ATF  BAHD   CPS GGPPS   KOX    KS   OMe  P450 
 #36     8     3     4     2     4    32   142 
 
@@ -549,7 +525,7 @@ Vtype[which(Vtype$word > 50) , 7] <- 60
 Vtype[which(Vtype$word < 35) , 7] <- 30
 
 
-# 全部id
+# all id
 set.seed(345)
 plot(filter_g1, 
      layout=	layout_on_sphere, 
@@ -561,7 +537,7 @@ plot(filter_g1,
      #edge.curved=TRUE,
      edge.width=0.1, edge.arrow.mode=0)
 
-# 部分id
+# partial id
 
 Vtype$word2 <- Vtype$size
 Vtype[which(Vtype$word2 > 35) , 8] <- 60
@@ -582,33 +558,31 @@ plot(filter_g1,
 
 dev.off()
 
-
-
-## 最小生成树
+## MST 
 filter_g_mst <- mst(filter_g1)
 
 
-#节点颜色
+#nodes color
 Vftype_mst  <- as.data.frame(degree(filter_g_mst))
 Vftype_mst$geneid2 <- rownames(Vftype_mst)
 Vftype_mst1 <- dplyr::left_join(Vftype_mst, Vtype, by="geneid2")
 
 
-# 节点大小
+# node size
 Vftype_mst1$size <- Vftype_mst1$`degree(filter_g_mst)`
 
 Vftype_mst1[which(Vftype_mst1$size >= 3),7] <- 3
 Vftype_mst1[which(Vftype_mst1$size == 2),7] <- 2.3
 Vftype_mst1[which(Vftype_mst1$size == 1),7] <- 2
 
-#字体大小
+# node front size
 Vftype_mst1$word <- Vftype_mst1$size
 
 Vftype_mst1[which(Vftype_mst1$word < 3),8] <- 0.001
 Vftype_mst1[which(Vftype_mst1$word == 3),8] <- 1.2
 
 
-# 节点度>3,标注基因id
+# labeled id with degree>3
 set.seed(345)
 plot(filter_g_mst, 
      layout=layout_nicely, 
@@ -621,7 +595,7 @@ plot(filter_g_mst,
 
 
 
-# 全部节点基因id
+# all nodes id
 set.seed(345)
 plot(filter_g_mst, 
      layout=layout_nicely, 
@@ -634,7 +608,7 @@ plot(filter_g_mst,
 
 
 
-# 保存网络文件
+# save network
 networklist <- list(filter_g = filter_g,
                     filter_g1 = filter_g1,
                     filter_g_mst = filter_g_mst)
